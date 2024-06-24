@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/metric"
@@ -73,5 +74,67 @@ func main() {
 }
 
 func createAndRecordMetrics(ctx context.Context, meter metric.Meter) {
-	// This is where we'll add our metrics later.
+	// Counter.
+	counter, err := meter.Int64Counter("demo.handled_items")
+	if err != nil {
+		log.Fatalf("Failed to create Counter: %v", err)
+	}
+	counter.Add(ctx, 1)  // Increment the counter by 1.
+	counter.Add(ctx, 23) // Increment the counter by 23.
+
+	// UpDownCounter.
+	upDownCounter, err := meter.Int64UpDownCounter("demo.queue_length")
+	if err != nil {
+		log.Fatalf("Failed to create UpDownCounter: %v", err)
+	}
+	upDownCounter.Add(ctx, 5)  // Increment by 5.
+	upDownCounter.Add(ctx, -2) // Decrement by 2.
+
+	// Gauge.
+	gauge, err := meter.Int64Gauge("demo.start_time")
+	if err != nil {
+		log.Fatalf("Failed to create Gauge: %v", err)
+	}
+	gauge.Record(ctx, time.Now().Unix()) // Set to the current Unix timestamp in seconds.
+
+	// Histogram.
+	histogram, err := meter.Float64Histogram(
+		"demo.request.duration",
+		metric.WithDescription("The distribution of demo request durations."),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(0.05, 0.1, 0.25, 0.5, 1, 2, 5),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create Histogram: %v", err)
+	}
+	histogram.Record(ctx, 0.023) // Record a request that took 0.023 seconds.
+	histogram.Record(ctx, 1.632) // Record a request that took 1.632 seconds.
+	histogram.Record(ctx, 0.345) // Record a request that took 0.345 seconds.
+	histogram.Record(ctx, 0.123) // Record a request that took 0.123 seconds.
+
+	// Asynchronous Gauge.
+	_, err = meter.Int64ObservableGauge(
+		"demo.observed_value",
+		metric.WithInt64Callback(func(ctx context.Context, result metric.Int64Observer) error {
+			result.Observe(23) // Return 23 as the current value of the gauge.
+			return nil
+		}),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create ObservableGauge: %v", err)
+	}
+
+	// Request counter that is partitioned by the HTTP method and path.
+	partitionedCounter, err := meter.Int64Counter("demo.request.count",
+		metric.WithDescription("The number of requests handled by the server."),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create Counter: %v", err)
+	}
+
+	// Record a few requests for different method and path combinations.
+	partitionedCounter.Add(ctx, 58, metric.WithAttributes(attribute.String("demo.method", "GET"), attribute.String("demo.path", "/items")))
+	partitionedCounter.Add(ctx, 81, metric.WithAttributes(attribute.String("demo.method", "POST"), attribute.String("demo.path", "/items")))
+	partitionedCounter.Add(ctx, 33, metric.WithAttributes(attribute.String("demo.method", "GET"), attribute.String("demo.path", "/users")))
+	partitionedCounter.Add(ctx, 97, metric.WithAttributes(attribute.String("demo.method", "POST"), attribute.String("demo.path", "/users")))
 }
