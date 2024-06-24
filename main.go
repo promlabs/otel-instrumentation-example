@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
 	sdk_metric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
@@ -45,9 +46,25 @@ func main() {
 		log.Fatalf("failed to create resource: %v", err)
 	}
 
+	exponentialHistogramView := sdk_metric.NewView(
+		// The instrument to which this view is attached.
+		sdk_metric.Instrument{
+			Name:  "demo.request.duration",
+			Scope: instrumentation.Scope{Name: "otel-instrumentation-example"},
+		},
+		// The aggregation to use for this view.
+		sdk_metric.Stream{
+			Aggregation: sdk_metric.AggregationBase2ExponentialHistogram{
+				MaxSize:  160, // Maximum number of buckets.
+				MaxScale: 20,  // Maximum resolution scale.
+			},
+		},
+	)
+
 	// Create a new MeterProvider with a reader that sends metrics to the OTLP exporter every 5 seconds.
 	meterProvider := sdk_metric.NewMeterProvider(
 		sdk_metric.WithResource(res),
+		sdk_metric.WithView(exponentialHistogramView),
 		// Send metrics via OTLP.
 		sdk_metric.WithReader(sdk_metric.NewPeriodicReader(otlpMetricExporter, sdk_metric.WithInterval(5*time.Second))),
 		// OPTIONAL: Log metrics to stdout.
