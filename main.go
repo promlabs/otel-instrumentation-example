@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/metric"
 	sdk_metric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 )
 
 func main() {
@@ -30,8 +32,21 @@ func main() {
 		log.Fatalf("Failed to create stdout metric exporter: %v", err)
 	}
 
+	res, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(semconv.SchemaURL,
+			semconv.ServiceName("my-demo-service"),  // Becomes the "job" label.
+			semconv.ServiceInstanceID("instance-a"), // Becomes the "instance" label.
+			semconv.ServiceVersion("0.1.0"),
+		),
+	)
+	if err != nil {
+		log.Fatalf("failed to create resource: %v", err)
+	}
+
 	// Create a new MeterProvider with a reader that sends metrics to the OTLP exporter every 5 seconds.
 	meterProvider := sdk_metric.NewMeterProvider(
+		sdk_metric.WithResource(res),
 		// Send metrics via OTLP.
 		sdk_metric.WithReader(sdk_metric.NewPeriodicReader(otlpMetricExporter, sdk_metric.WithInterval(5*time.Second))),
 		// OPTIONAL: Log metrics to stdout.
